@@ -5,20 +5,40 @@ import { NoteItem } from "./components/NoteItem";
 
 export function App() {
 	const [notes, setNotes] = useState<Note[]>();
+	const [nextCursor, setNextCursor] = useState<number | null>(null);
+	const [loadingMore, setLoadingMore] = useState(false);
 	const [error, setError] = useState<string>();
 
-	const refresh = useCallback(async () => {
+	/** Loads the first page, or appends the page after `cursor`. */
+	const load = useCallback(async (cursor?: number) => {
 		try {
-			setNotes(await listNotes());
+			const page = await listNotes(cursor);
+			setNotes((prev) => (cursor && prev ? [...prev, ...page.data] : page.data));
+			setNextCursor(page.nextCursor);
 			setError(undefined);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
 		}
 	}, []);
 
+	const refresh = useCallback(() => load(), [load]);
+
+	const loadMore = async () => {
+		if (!nextCursor || loadingMore) return;
+		setLoadingMore(true);
+		await load(nextCursor);
+		setLoadingMore(false);
+	};
+
 	useEffect(() => {
 		refresh();
 	}, [refresh]);
+
+	// Patch the loaded list in place so already-loaded pages aren't thrown away.
+	const onCreated = (note: Note) => setNotes((prev) => [note, ...(prev ?? [])]);
+	const onUpdated = (note: Note) =>
+		setNotes((prev) => prev?.map((n) => (n.id === note.id ? note : n)));
+	const onDeleted = (id: number) => setNotes((prev) => prev?.filter((n) => n.id !== id));
 
 	return (
 		<div className="min-h-screen bg-stone-100 text-stone-900 dark:bg-stone-950 dark:text-stone-100">
@@ -32,12 +52,13 @@ export function App() {
 					</div>
 					{notes && notes.length > 0 && (
 						<span className="rounded-full bg-stone-200 px-3 py-1 text-xs font-medium text-stone-600 dark:bg-stone-800 dark:text-stone-300">
-							{notes.length} {notes.length === 1 ? "note" : "notes"}
+							{notes.length}
+							{nextCursor ? "+" : ""} {notes.length === 1 && !nextCursor ? "note" : "notes"}
 						</span>
 					)}
 				</header>
 
-				<NewNoteForm onChanged={refresh} />
+				<NewNoteForm onCreated={onCreated} />
 
 				{error && (
 					<div
@@ -56,11 +77,22 @@ export function App() {
 				) : notes.length === 0 ? (
 					<EmptyState />
 				) : (
-					<ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-						{notes.map((note) => (
-							<NoteItem key={note.id} note={note} onChanged={refresh} />
-						))}
-					</ul>
+					<>
+						<ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+							{notes.map((note) => (
+								<NoteItem key={note.id} note={note} onUpdated={onUpdated} onDeleted={onDeleted} />
+							))}
+						</ul>
+						{nextCursor && (
+							<button
+								onClick={loadMore}
+								disabled={loadingMore}
+								className="mx-auto rounded-lg px-4 py-2 text-sm font-medium text-stone-600 ring-1 ring-stone-300 transition hover:bg-white hover:text-stone-900 disabled:opacity-40 dark:text-stone-300 dark:ring-stone-700 dark:hover:bg-stone-900 dark:hover:text-stone-100"
+							>
+								{loadingMore ? "Loading..." : "Load more"}
+							</button>
+						)}
+					</>
 				)}
 			</main>
 		</div>

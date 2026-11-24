@@ -2,34 +2,44 @@ import { useState, useTransition, type KeyboardEvent } from "react";
 import { deleteNote, updateNote, type Note } from "../api";
 import { fullDate, parseDate, relativeTime } from "../format";
 
-type Props = { note: Note; onChanged: () => Promise<void> };
+type Props = {
+	note: Note;
+	onUpdated: (note: Note) => void;
+	onDeleted: (id: number) => void;
+};
 
 const ghost =
 	"rounded-md px-2.5 py-1 text-xs font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 disabled:opacity-40 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100";
 
-export function NoteItem({ note, onChanged }: Props) {
+export function NoteItem({ note, onUpdated, onDeleted }: Props) {
 	const [editing, setEditing] = useState(false);
 	const [text, setText] = useState(note.content);
 	const [error, setError] = useState<string>();
 	const [pending, startTransition] = useTransition();
 	const created = parseDate(note.created_at);
 
-	const run = (fn: () => Promise<unknown>, onOk?: () => void) =>
+	const run = <T,>(fn: () => Promise<T>, onOk: (result: T) => void) =>
 		startTransition(async () => {
+			let result: T;
 			try {
-				await fn();
+				result = await fn();
 			} catch (e) {
 				setError(e instanceof Error ? e.message : String(e));
 				return;
 			}
 			setError(undefined);
-			onOk?.();
-			await onChanged();
+			onOk(result);
 		});
 
 	const save = () => {
 		if (!text.trim()) return;
-		run(() => updateNote(note.id, text.trim()), () => setEditing(false));
+		run(
+			() => updateNote(note.id, text.trim()),
+			(updated) => {
+				setEditing(false);
+				onUpdated(updated);
+			},
+		);
 	};
 
 	const cancel = () => {
@@ -39,7 +49,7 @@ export function NoteItem({ note, onChanged }: Props) {
 	};
 
 	const remove = () => {
-		if (confirm("Delete this note?")) run(() => deleteNote(note.id));
+		if (confirm("Delete this note?")) run(() => deleteNote(note.id), () => onDeleted(note.id));
 	};
 
 	const onKeyDown = (e: KeyboardEvent) => {

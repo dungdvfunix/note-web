@@ -14,7 +14,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 	return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-export const listNotes = () => call<Note[]>("");
+export type NotesPage = { data: Note[]; nextCursor: number | null };
+
+/** Newest first. Pass the previous page's `nextCursor` to get the next page. */
+export const listNotes = (cursor?: number | null, limit = 20) => {
+	const params = new URLSearchParams({ limit: String(limit) });
+	if (cursor) params.set("cursor", String(cursor));
+	return call<NotesPage>(`?${params}`);
+};
 
 export const createNote = (content: string) =>
 	call<Note>("", { method: "POST", body: JSON.stringify({ content }) });

@@ -1,7 +1,7 @@
 import { useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
-import { createNote } from "../api";
+import { createNote, type Note } from "../api";
 
-export function NewNoteForm({ onChanged }: { onChanged: () => Promise<void> }) {
+export function NewNoteForm({ onCreated }: { onCreated: (note: Note) => void }) {
 	const [content, setContent] = useState("");
 	const [error, setError] = useState<string>();
 	const [pending, startTransition] = useTransition();
@@ -11,15 +11,16 @@ export function NewNoteForm({ onChanged }: { onChanged: () => Promise<void> }) {
 		e?.preventDefault();
 		if (!trimmed || pending) return;
 		startTransition(async () => {
+			let note: Note;
 			try {
-				await createNote(trimmed);
+				note = await createNote(trimmed);
 			} catch (err) {
 				setError(err instanceof Error ? err.message : String(err));
 				return;
 			}
 			setError(undefined);
 			setContent("");
-			await onChanged();
+			onCreated(note);
 		});
 	};
 
