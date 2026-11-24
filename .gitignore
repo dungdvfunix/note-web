@@ -6,3 +6,5 @@ next-env.d.ts
 .vinext/
 .cloudflare/
 *.tsbuildinfo
+.wrangler/
+.playwright-mcp/

@@ -1,13 +1,9 @@
-import "server-only";
-import { env } from "cloudflare:workers";
-
 export type Note = { id: number; content: string; created_at: string };
 
-// Host is ignored by service bindings; the request is routed to the notes-api Worker.
-const BASE = "https://notes-api/api/notes";
+const BASE = "/api/notes";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-	const res = await env.API.fetch(`${BASE}${path}`, {
+	const res = await fetch(`${BASE}${path}`, {
 		...init,
 		headers: { "Content-Type": "application/json", ...init?.headers },
 	});
