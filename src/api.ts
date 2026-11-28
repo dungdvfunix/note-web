@@ -1,20 +1,48 @@
-export type Note = { id: number; content: string; created_at: string };
+import { fileSize } from "./format";
 
+export type Attachment = {
+	id: string;
+	filename: string;
+	contentType: string;
+	size: number;
+	created_at: string;
+	/** Same-origin URL that streams the file (session cookie required). */
+	url: string;
+};
+
+export type Note = { id: number; content: string; created_at: string; attachments: Attachment[] };
+export type NotesPage = { data: Note[]; nextCursor: number | null };
+
+// Mirrors the API limits (notes-api/src/services/attachments.ts); the API re-checks everything.
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_FILES_PER_NOTE = 10;
+export const ACCEPT = "image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
+const UPLOAD_CONCURRENCY = 3;
 const BASE = "/api/notes";
+
+// ---- transport ---------------------------------------------------------------
+
+let unauthorizedHandler = () => {};
+/** Called on any 401 (session expired/revoked). Registered by the auth module. */
+export const onUnauthorized = (fn: () => void) => void (unauthorizedHandler = fn);
+
+/** One place that turns a failed response into an Error (and reports 401s). */
+function toError(status: number, body: unknown): Error {
+	if (status === 401) unauthorizedHandler();
+	const message = (body as { error?: string } | null)?.error;
+	return new Error(message ?? `Request failed (${status})`);
+}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, {
 		...init,
 		headers: { "Content-Type": "application/json", ...init?.headers },
 	});
-	if (!res.ok) {
-		const body = (await res.json().catch(() => null)) as { error?: string } | null;
-		throw new Error(body?.error ?? `Request failed (${res.status})`);
-	}
+	if (!res.ok) throw toError(res.status, await res.json().catch(() => null));
 	return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-export type NotesPage = { data: Note[]; nextCursor: number | null };
+// ---- notes -------------------------------------------------------------------
 
 /** Newest first. Pass the previous page's `nextCursor` to get the next page. */
 export const listNotes = (cursor?: number | null, limit = 20) => {
@@ -23,10 +51,78 @@ export const listNotes = (cursor?: number | null, limit = 20) => {
 	return call<NotesPage>(`?${params}`);
 };
 
-export const createNote = (content: string) =>
-	call<Note>("", { method: "POST", body: JSON.stringify({ content }) });
+export const createNote = (content: string) => call<Note>("", { method: "POST", body: JSON.stringify({ content }) });
 
 export const updateNote = (id: number, content: string) =>
 	call<Note>(`/${id}`, { method: "PUT", body: JSON.stringify({ content }) });
 
 export const deleteNote = (id: number) => call<void>(`/${id}`, { method: "DELETE" });
+
+// ---- attachments -------------------------------------------------------------
+
+export const deleteAttachment = (noteId: number, id: string) =>
+	call<void>(`/${noteId}/attachments/${id}`, { method: "DELETE" });
+
+/**
+ * Uploads one file (raw body, streamed to R2 by the API).
+ * XHR instead of fetch so we can report upload progress (0..1).
+ */
+export function uploadAttachment(noteId: number, file: File, onProgress?: (p: number) => void) {
+	return new Promise<Attachment>((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open("POST", `${BASE}/${noteId}/attachments?filename=${encodeURIComponent(file.name)}`);
+		xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+		xhr.responseType = "json";
+		if (onProgress) xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+		xhr.onload = () =>
+			xhr.status >= 200 && xhr.status < 300
+				? resolve(xhr.response as Attachment)
+				: reject(toError(xhr.status, xhr.response));
+		xhr.onerror = () => reject(new Error("Network error"));
+		xhr.send(file);
+	});
+}
+
+type UploadItem = { key: string; file: File };
+type UploadCallbacks = {
+	onProgress?: (key: string, progress: number) => void;
+	onError?: (key: string, error: unknown) => void;
+};
+
+/** Uploads several files a few at a time. Resolves with the ones that succeeded (partial success is normal). */
+export async function uploadAttachments(noteId: number, items: UploadItem[], cb: UploadCallbacks = {}) {
+	const queue = [...items];
+	const done: Attachment[] = [];
+	const worker = async () => {
+		for (let item = queue.shift(); item; item = queue.shift()) {
+			const { key, file } = item;
+			try {
+				done.push(await uploadAttachment(noteId, file, cb.onProgress && ((p) => cb.onProgress!(key, p))));
+			} catch (err) {
+				cb.onError?.(key, err);
+			}
+		}
+	};
+	await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
+	return done;
+}
+
+/** Client-side pre-check of one file; the API enforces the same limits. */
+export function checkFile(file: File): string | undefined {
+	if (file.size === 0) return `${file.name} is empty`;
+	if (file.size > MAX_FILE_BYTES) return `${file.name} is larger than ${fileSize(MAX_FILE_BYTES)}`;
+	if (/svg|html|javascript/.test(file.type)) return `${file.name}: file type not allowed`;
+}
+
+/** Splits picked files into acceptable ones (capped to the room left on the note) and problems. */
+export function partitionFiles(list: FileList | File[], existingCount: number) {
+	const problems: string[] = [];
+	const valid = Array.from(list).filter((f) => {
+		const problem = checkFile(f);
+		if (problem) problems.push(problem);
+		return !problem;
+	});
+	const room = Math.max(MAX_FILES_PER_NOTE - existingCount, 0);
+	if (valid.length > room) problems.push(`Max ${MAX_FILES_PER_NOTE} files per note`);
+	return { files: valid.slice(0, room), problem: problems[0] };
+}

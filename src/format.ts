@@ -25,3 +25,37 @@ export function relativeTime(date: Date, now = Date.now()): string {
 }
 
 export const fullDate = (date: Date) => full.format(date);
+
+export function fileSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Short uppercase label from a file name, e.g. "PDF", "DOCX". */
+export function fileExt(name: string): string {
+	const ext = name.includes(".") ? name.split(".").pop()! : "";
+	return ext.slice(0, 4).toUpperCase() || "FILE";
+}
+
+export type FileKind = "image" | "video" | "audio" | "pdf" | "sheet" | "doc" | "slides" | "file";
+
+// First match wins. Images are only the formats every browser can display inline.
+const KINDS: [RegExp, FileKind][] = [
+	[/^image\/(png|jpeg|gif|webp|avif)$/, "image"],
+	[/^video\//, "video"],
+	[/^audio\//, "audio"],
+	[/^application\/pdf$/, "pdf"],
+	[/sheet|excel|csv/, "sheet"],
+	[/word|wordprocessing/, "doc"],
+	[/presentation|powerpoint/, "slides"],
+];
+
+/** Single source of truth for "what kind of file is this" (grouping, badges, viewers). */
+export const fileKind = (contentType: string): FileKind => KINDS.find(([re]) => re.test(contentType))?.[1] ?? "file";
+
+export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** ⌘/Ctrl + Enter */
+export const isSubmitShortcut = (e: { key: string; metaKey: boolean; ctrlKey: boolean }) =>
+	e.key === "Enter" && (e.metaKey || e.ctrlKey);
