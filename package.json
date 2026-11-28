@@ -4,6 +4,8 @@
   "private": true,
   "packageManager": "npm@11.19.1",
   "dependencies": {
+    "better-auth": "^1.7.28",
+    "pdfjs-dist": "^6.5.438",
     "react": "latest",
     "react-dom": "latest"
   },

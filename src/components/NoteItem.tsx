@@ -1,45 +1,53 @@
-import { useState, useTransition, type KeyboardEvent } from "react";
-import { deleteNote, updateNote, type Note } from "../api";
-import { fullDate, parseDate, relativeTime } from "../format";
+import { memo, useState, useTransition, type KeyboardEvent } from "react";
+import {
+	deleteAttachment,
+	deleteNote,
+	MAX_FILES_PER_NOTE,
+	partitionFiles,
+	updateNote,
+	uploadAttachments,
+	type Attachment,
+	type Note,
+} from "../api";
+import { errorMessage, fullDate, isSubmitShortcut, parseDate, relativeTime } from "../format";
+import { dangerHover, iconBtnSm } from "../ui";
+import { AttachmentList } from "./Attachments";
+import { PaperclipIcon, PenIcon, TrashIcon } from "./icons";
+import { AttachButton } from "./PendingFiles";
 
 type Props = {
 	note: Note;
-	onUpdated: (note: Note) => void;
+	onChange: (id: number, patch: (note: Note) => Note) => void;
 	onDeleted: (id: number) => void;
 };
 
-const ghost =
-	"rounded-md px-2.5 py-1 text-xs font-medium text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 disabled:opacity-40 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100";
+const textBtn = "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-40";
 
-export function NoteItem({ note, onUpdated, onDeleted }: Props) {
+export const NoteItem = memo(function NoteItem({ note, onChange, onDeleted }: Props) {
 	const [editing, setEditing] = useState(false);
 	const [text, setText] = useState(note.content);
 	const [error, setError] = useState<string>();
 	const [pending, startTransition] = useTransition();
 	const created = parseDate(note.created_at);
 
-	const run = <T,>(fn: () => Promise<T>, onOk: (result: T) => void) =>
+	const run = (action: () => Promise<void>) =>
 		startTransition(async () => {
-			let result: T;
 			try {
-				result = await fn();
+				await action();
+				setError(undefined);
 			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e));
-				return;
+				setError(errorMessage(e));
 			}
-			setError(undefined);
-			onOk(result);
 		});
 
 	const save = () => {
-		if (!text.trim()) return;
-		run(
-			() => updateNote(note.id, text.trim()),
-			(updated) => {
-				setEditing(false);
-				onUpdated(updated);
-			},
-		);
+		const content = text.trim();
+		if (!content) return;
+		run(async () => {
+			const updated = await updateNote(note.id, content);
+			setEditing(false);
+			onChange(note.id, () => updated);
+		});
 	};
 
 	const cancel = () => {
@@ -49,19 +57,45 @@ export function NoteItem({ note, onUpdated, onDeleted }: Props) {
 	};
 
 	const remove = () => {
-		if (confirm("Delete this note?")) run(() => deleteNote(note.id), () => onDeleted(note.id));
+		if (!confirm("Delete this note?")) return;
+		run(async () => {
+			await deleteNote(note.id);
+			onDeleted(note.id);
+		});
+	};
+
+	const removeAttachment = (a: Attachment) =>
+		run(async () => {
+			await deleteAttachment(note.id, a.id);
+			onChange(note.id, (n) => ({ ...n, attachments: n.attachments.filter((x) => x.id !== a.id) }));
+		});
+
+	const addAttachments = (list: FileList) => {
+		const { files, problem } = partitionFiles(list, note.attachments.length);
+		setError(problem);
+		if (files.length === 0) return;
+		run(async () => {
+			let failed = 0;
+			const added = await uploadAttachments(
+				note.id,
+				files.map((file) => ({ key: file.name, file })),
+				{ onError: () => failed++ },
+			);
+			if (added.length) onChange(note.id, (n) => ({ ...n, attachments: [...n.attachments, ...added] }));
+			if (failed) throw new Error(`${failed} file${failed > 1 ? "s" : ""} failed to upload`);
+		});
 	};
 
 	const onKeyDown = (e: KeyboardEvent) => {
-		if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
+		if (isSubmitShortcut(e)) save();
 		if (e.key === "Escape") cancel();
 	};
 
 	return (
 		<li
-			className={`group flex flex-col rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200 transition hover:-translate-y-0.5 hover:shadow-md dark:bg-stone-900 dark:ring-stone-800 ${
-				pending ? "opacity-60" : ""
-			}`}
+			className={`group mb-4 flex break-inside-avoid flex-col rounded-xl border bg-white p-4 shadow-card transition ${
+				editing ? "border-accent/60 ring-4 ring-accent/10" : "border-stone-200/80 hover:shadow-lift"
+			} ${pending ? "opacity-60" : ""}`}
 		>
 			{editing ? (
 				<textarea
@@ -70,49 +104,63 @@ export function NoteItem({ note, onUpdated, onDeleted }: Props) {
 					onKeyDown={onKeyDown}
 					aria-label="Edit note"
 					autoFocus
-					rows={4}
-					className="w-full flex-1 resize-none rounded-lg bg-stone-50 p-2 outline-none ring-2 ring-amber-400 dark:bg-stone-800"
+					className="field-sizing-content block max-h-96 min-h-24 w-full resize-none bg-transparent text-[15px] leading-relaxed outline-none"
 				/>
 			) : (
-				<p className="flex-1 whitespace-pre-wrap break-words leading-relaxed">{note.content}</p>
+				<p
+					onDoubleClick={() => setEditing(true)}
+					className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-stone-800"
+				>
+					{note.content}
+				</p>
 			)}
 
-			{error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
+			<AttachmentList items={note.attachments} onRemove={editing ? removeAttachment : undefined} busy={pending} />
 
-			<div className="mt-4 flex items-center justify-between gap-2 border-t border-stone-100 pt-3 dark:border-stone-800">
+			{error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+
+			<div className="mt-3 flex h-7 items-center justify-between gap-2">
 				<time dateTime={created.toISOString()} title={fullDate(created)} className="text-xs text-stone-400">
 					{relativeTime(created)}
 				</time>
-				<div className="flex gap-1 opacity-100 transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
-					{editing ? (
-						<>
-							<button onClick={cancel} className={ghost}>
-								Cancel
-							</button>
-							<button
-								onClick={save}
-								disabled={pending || !text.trim()}
-								className="rounded-md bg-amber-400 px-2.5 py-1 text-xs font-medium text-stone-950 transition hover:bg-amber-300 disabled:opacity-40"
-							>
-								Save
-							</button>
-						</>
-					) : (
-						<>
-							<button onClick={() => setEditing(true)} className={ghost}>
-								Edit
-							</button>
-							<button
-								onClick={remove}
-								disabled={pending}
-								className={`${ghost} hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400`}
-							>
-								Delete
-							</button>
-						</>
-					)}
-				</div>
+				{editing ? (
+					<div className="flex gap-1">
+						<AttachButton
+							onFiles={addAttachments}
+							disabled={pending || note.attachments.length >= MAX_FILES_PER_NOTE}
+							className={iconBtnSm}
+							label="Attach files"
+						>
+							<PaperclipIcon width={14} height={14} />
+						</AttachButton>
+						<button onClick={cancel} className={`${textBtn} text-stone-500 hover:bg-stone-100 hover:text-ink`}>
+							Cancel
+						</button>
+						<button
+							onClick={save}
+							disabled={pending || !text.trim()}
+							className={`${textBtn} bg-ink text-white hover:bg-stone-800`}
+						>
+							Save
+						</button>
+					</div>
+				) : (
+					<div className="flex gap-0.5 transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+						<button onClick={() => setEditing(true)} className={iconBtnSm} aria-label="Edit note" title="Edit">
+							<PenIcon width={14} height={14} />
+						</button>
+						<button
+							onClick={remove}
+							disabled={pending}
+							className={`${iconBtnSm} ${dangerHover}`}
+							aria-label="Delete note"
+							title="Delete"
+						>
+							<TrashIcon width={14} height={14} />
+						</button>
+					</div>
+				)}
 			</div>
 		</li>
 	);
-}
+});
