@@ -1,6 +1,6 @@
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { signIn, signUp } from "../auth";
-import { Logo } from "./icons";
+import { GitHubIcon, GoogleIcon, Logo } from "./icons";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -20,6 +20,11 @@ const COPY = {
 		switchAction: "Sign in",
 	},
 } as const;
+
+const PROVIDERS = [
+	{ id: "google", label: "Continue with Google", Icon: GoogleIcon },
+	{ id: "github", label: "Continue with GitHub", Icon: GitHubIcon },
+] as const;
 
 const input =
 	"w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm shadow-card outline-none transition placeholder:text-stone-400 focus:border-accent focus:ring-4 focus:ring-accent/15";
@@ -53,6 +58,12 @@ export function AuthForm() {
 			setError(error ? (error.message ?? error.statusText) : undefined);
 		});
 	};
+
+	const signInWith = (provider: (typeof PROVIDERS)[number]["id"]) =>
+		startTransition(async () => {
+			const { error } = await signIn.social({ provider, callbackURL: "/", errorCallbackURL: "/" });
+			if (error) setError(error.message ?? error.statusText);
+		});
 
 	const toggle = () => {
 		setMode(isSignUp ? "sign-in" : "sign-up");
@@ -115,6 +126,23 @@ export function AuthForm() {
 				>
 					{pending ? "Please wait…" : copy.submit}
 				</button>
+				<div className="flex items-center gap-3 text-xs text-stone-400">
+					<span className="h-px flex-1 bg-stone-200" />
+					or
+					<span className="h-px flex-1 bg-stone-200" />
+				</div>
+				{PROVIDERS.map(({ id, label, Icon }) => (
+					<button
+						key={id}
+						type="button"
+						onClick={() => signInWith(id)}
+						disabled={pending}
+						className="flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-medium text-ink shadow-card transition hover:bg-stone-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<Icon />
+						{label}
+					</button>
+				))}
 			</form>
 
 			<p className="mt-6 text-sm text-stone-500">
