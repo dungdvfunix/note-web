@@ -55,19 +55,30 @@ export const deleteNote = (id: number) => call<void>(`/${id}`, { method: "DELETE
 export const deleteAttachment = (noteId: number, id: string) =>
 	call<void>(`/${noteId}/attachments/${id}`, { method: "DELETE" });
 
-export function uploadAttachment(noteId: number, file: File, onProgress?: (p: number) => void) {
-	return new Promise<Attachment>((resolve, reject) => {
+type Presigned = { id: string; uploadUrl: string; contentType: string };
+
+function putToStorage(url: string, file: File, contentType: string, onProgress?: (p: number) => void) {
+	return new Promise<void>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
-		xhr.open("POST", `${BASE}/${noteId}/attachments?filename=${encodeURIComponent(file.name)}`);
-		xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-		xhr.responseType = "json";
+		xhr.open("PUT", url);
+		xhr.setRequestHeader("Content-Type", contentType);
 		if (onProgress) xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
 		xhr.onload = () =>
-			xhr.status >= 200 && xhr.status < 300
-				? resolve(xhr.response as Attachment)
-				: reject(toError(xhr.status, xhr.response));
+			xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`));
 		xhr.onerror = () => reject(new Error("Network error"));
 		xhr.send(file);
+	});
+}
+
+export async function uploadAttachment(noteId: number, file: File, onProgress?: (p: number) => void) {
+	const { id, uploadUrl, contentType } = await call<Presigned>(`/${noteId}/attachments/presign`, {
+		method: "POST",
+		body: JSON.stringify({ contentType: file.type || "application/octet-stream", size: file.size }),
+	});
+	await putToStorage(uploadUrl, file, contentType, onProgress);
+	return call<Attachment>(`/${noteId}/attachments`, {
+		method: "POST",
+		body: JSON.stringify({ id, filename: file.name }),
 	});
 }
 
