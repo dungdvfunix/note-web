@@ -14,16 +14,12 @@ type Zoom = number | "fit";
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
 const STEP = 0.25;
-const GAP = 16; // px between pages
+const GAP = 16;
 const PADDING_X = 32;
-const MAX_CANVAS_PIXELS = 16_000_000; // stay under mobile canvas limits at high zoom × DPR
+const MAX_CANVAS_PIXELS = 16_000_000;
 
 const clampScale = (s: number) => Math.min(Math.max(s, MIN_SCALE), MAX_SCALE);
 
-/**
- * Full-screen PDF viewer rendered with pdf.js (same on desktop, iOS and Android, unlike
- * the browser's built-in viewer). Pages render lazily as they scroll near the viewport.
- */
 export default function PdfViewer({ url, filename, onClose }: Props) {
 	const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
 	const { doc, pageSizes, error, setPageSize } = usePdfDocument(url);
@@ -34,7 +30,6 @@ export default function PdfViewer({ url, filename, onClose }: Props) {
 	const currentRef = useRef(1);
 	const observe = useIntersection(scroller, "800px 0px");
 
-	// Top offset of each page inside the scroll content: pure arithmetic, no DOM reads.
 	const tops = useMemo(() => {
 		const out: number[] = [];
 		let y = GAP;
@@ -48,7 +43,6 @@ export default function PdfViewer({ url, filename, onClose }: Props) {
 	const onScroll = () => {
 		if (!scroller) return;
 		const mark = scroller.scrollTop + scroller.clientHeight / 3;
-		// Last page whose top is above the mark (binary search).
 		let lo = 0;
 		let hi = tops.length - 1;
 		while (lo < hi) {
@@ -63,7 +57,6 @@ export default function PdfViewer({ url, filename, onClose }: Props) {
 	const goTo = (n: number, behavior: ScrollBehavior = "smooth") =>
 		scroller?.scrollTo({ top: tops[n - 1] - GAP, behavior });
 
-	// Zoom changes every page's height: keep the page that was in view at the top.
 	const reanchor = useEffectEvent(() => {
 		if (currentRef.current > 1) goTo(currentRef.current, "instant");
 	});
@@ -147,7 +140,6 @@ export default function PdfViewer({ url, filename, onClose }: Props) {
 	);
 }
 
-/** Scale that fits the widest page to the scroller width; tracks resizes (rounded to avoid churn). */
 function useFitScale(scroller: HTMLElement | null, pageSizes: Size[]) {
 	const [fit, setFit] = useState<number>();
 	const widest = useMemo(() => Math.max(0, ...pageSizes.map((s) => s.w)), [pageSizes]);
@@ -263,11 +255,6 @@ type PageProps = {
 	onSize: (num: number, size: Size) => void;
 };
 
-/**
- * One page. Renders to its canvas only while near the viewport; when it scrolls far
- * away the bitmap and pdf.js page resources are released. Memoized so scrolling
- * (current-page updates) doesn't re-render every page.
- */
 const PdfPage = memo(function PdfPage({ doc, num, size, scale, observe, onSize }: PageProps) {
 	const box = useRef<HTMLDivElement>(null);
 	const canvas = useRef<HTMLCanvasElement>(null);
@@ -287,7 +274,6 @@ const PdfPage = memo(function PdfPage({ doc, num, size, scale, observe, onSize }
 			page = p;
 			const base = p.getViewport({ scale: 1 });
 			onSize(num, { w: base.width, h: base.height });
-			// Crisp on retina, but cap the bitmap size at high zoom.
 			const cssPixels = base.width * base.height * scale * scale;
 			const ratio = Math.min(window.devicePixelRatio || 1, Math.sqrt(MAX_CANVAS_PIXELS / cssPixels));
 			const viewport = p.getViewport({ scale: scale * ratio });
@@ -302,7 +288,7 @@ const PdfPage = memo(function PdfPage({ doc, num, size, scale, observe, onSize }
 		return () => {
 			cancelled = true;
 			task?.cancel();
-			c.width = c.height = 0; // release the bitmap
+			c.width = c.height = 0;
 			page?.cleanup();
 		};
 	}, [near, scale, doc, num, onSize]);

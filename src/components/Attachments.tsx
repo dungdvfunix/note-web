@@ -8,12 +8,10 @@ import { PdfViewerModal } from "./PdfViewerModal";
 
 type ListProps = {
 	items: Attachment[];
-	/** When set (edit mode), each item gets a remove button. */
 	onRemove?: (a: Attachment) => void;
 	busy?: boolean;
 };
 
-/** Saved attachments of a note: image grid, inline players, then a file list. */
 export function AttachmentList({ items, onRemove, busy }: ListProps) {
 	const [viewing, setViewing] = useState<Attachment>();
 	const closeViewer = useCallback(() => setViewing(undefined), []);

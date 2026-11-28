@@ -21,7 +21,6 @@ export function NotesList({ notes, error, hasMore, loadingMore, loadMore, update
 		</section>
 	);
 
-	// Plain function (not a nested component) so React never remounts the list.
 	function renderBody() {
 		if (!notes) return error ? null : <Skeleton />;
 		if (notes.length === 0) return <EmptyState />;

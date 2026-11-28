@@ -2,10 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Callback = (visible: boolean) => void;
 
-/**
- * One shared IntersectionObserver for many elements (instead of one per element).
- * Returns a stable `observe(el, cb)` that returns its own unobserve, or undefined until `root` exists.
- */
 export function useIntersection(root: HTMLElement | null, rootMargin: string) {
 	const callbacks = useRef(new Map<Element, Callback>());
 	const [io, setIo] = useState<IntersectionObserver>();

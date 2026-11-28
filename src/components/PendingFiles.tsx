@@ -6,7 +6,6 @@ import { XIcon } from "./icons";
 
 export type PendingFile = { key: string; file: File; progress?: number; error?: string };
 
-/** Button + hidden <input type=file>; calls `onFiles` with the picked files. */
 export function AttachButton({
 	onFiles,
 	disabled,
@@ -41,14 +40,13 @@ export function AttachButton({
 				hidden
 				onChange={(e) => {
 					if (e.target.files?.length) onFiles(e.target.files);
-					e.target.value = ""; // allow picking the same file again
+					e.target.value = "";
 				}}
 			/>
 		</>
 	);
 }
 
-/** Files picked in the composer, before/while uploading. */
 export function PendingFiles({
 	items,
 	onRemove,
@@ -98,7 +96,6 @@ export function PendingFiles({
 	);
 }
 
-/** Image preview via an object URL owned by this component (revoked on unmount); badge otherwise. */
 function Thumb({ file }: { file: File }) {
 	const isImage = fileKind(file.type) === "image";
 	const [url, setUrl] = useState<string>();

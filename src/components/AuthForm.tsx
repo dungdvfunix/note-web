@@ -47,7 +47,6 @@ export function AuthForm() {
 		e.preventDefault();
 		if (pending) return;
 		startTransition(async () => {
-			// On success the session atom updates and App swaps to the notes view.
 			const { error } = isSignUp
 				? await signUp.email({ name: name.trim() || email.split("@")[0], email, password })
 				: await signIn.email({ email, password });

@@ -35,7 +35,6 @@ export const LogOutIcon = (p: SVGProps<SVGSVGElement>) => (
 	</svg>
 );
 
-/** App mark: amber tile with a pen. */
 export function Logo({ size = 32 }: { size?: number }) {
 	return (
 		<span

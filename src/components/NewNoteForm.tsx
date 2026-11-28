@@ -7,7 +7,7 @@ import { AttachButton, PendingFiles, type PendingFile } from "./PendingFiles";
 
 const kbd = "rounded border border-stone-200 bg-stone-50 px-1.5 py-0.5 font-sans text-[11px] text-stone-500";
 const BUSY_LABEL = { saving: "Saving…", uploading: "Uploading…" } as const;
-const PROGRESS_STEP = 0.05; // re-render the progress bar at most every 5%
+const PROGRESS_STEP = 0.05;
 
 export function NewNoteForm({ onCreated }: { onCreated: (note: Note) => void }) {
 	const [content, setContent] = useState("");
@@ -23,7 +23,6 @@ export function NewNoteForm({ onCreated }: { onCreated: (note: Note) => void }) 
 		setError(problem);
 	};
 
-	/** Updates one pending file; returns the same array when nothing changed (no re-render). */
 	const patch = (key: string, p: Partial<PendingFile>) =>
 		setFiles((prev) => {
 			const i = prev.findIndex((f) => f.key === key);

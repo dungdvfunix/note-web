@@ -1,6 +1,3 @@
-// Static assets (the React SPA) are served by the assets layer.
-// Only /api/* reaches this Worker; it is forwarded to the notes-api Worker
-// through the service binding (the host is ignored by service bindings).
 export default {
 	fetch(request, env) {
 		const url = new URL(request.url);

@@ -1,7 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Spinner } from "./Spinner";
 
-// pdf.js is ~1 MB: only fetched the first time a PDF is opened.
 const PdfViewer = lazy(() => import("./PdfViewer"));
 
 type Props = { url: string; filename: string; onClose: () => void };

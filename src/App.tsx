@@ -18,7 +18,6 @@ export function App() {
 		);
 
 	const { user } = session;
-	// Keyed by user so switching accounts never shows the previous user's notes.
 	return <NotesPage key={user.id} name={user.name || user.email} email={user.email} />;
 }
 

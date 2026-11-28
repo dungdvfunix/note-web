@@ -11,7 +11,6 @@ const TONE: Record<FileKind, string> = {
 	file: "bg-stone-100 text-stone-600",
 };
 
-/** Colored tile with the file extension; color hints the kind of document. */
 export function FileBadge({ name, type, compact = false }: { name: string; type: string; compact?: boolean }) {
 	return (
 		<span

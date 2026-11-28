@@ -17,14 +17,12 @@ import { AttachButton } from "./PendingFiles";
 
 type Props = {
 	note: Note;
-	/** Functional patch of this note in the list (see useNotes.update). */
 	onChange: (id: number, patch: (note: Note) => Note) => void;
 	onDeleted: (id: number) => void;
 };
 
 const textBtn = "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-40";
 
-/** Memoized: only re-renders when its own note object changes. */
 export const NoteItem = memo(function NoteItem({ note, onChange, onDeleted }: Props) {
 	const [editing, setEditing] = useState(false);
 	const [text, setText] = useState(note.content);
@@ -32,7 +30,6 @@ export const NoteItem = memo(function NoteItem({ note, onChange, onDeleted }: Pr
 	const [pending, startTransition] = useTransition();
 	const created = parseDate(note.created_at);
 
-	/** Runs an async action with pending state; errors land in `error`. */
 	const run = (action: () => Promise<void>) =>
 		startTransition(async () => {
 			try {
@@ -84,7 +81,6 @@ export const NoteItem = memo(function NoteItem({ note, onChange, onDeleted }: Pr
 				files.map((file) => ({ key: file.name, file })),
 				{ onError: () => failed++ },
 			);
-			// Keep whatever succeeded even if some uploads failed.
 			if (added.length) onChange(note.id, (n) => ({ ...n, attachments: [...n.attachments, ...added] }));
 			if (failed) throw new Error(`${failed} file${failed > 1 ? "s" : ""} failed to upload`);
 		});

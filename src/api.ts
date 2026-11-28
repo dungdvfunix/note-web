@@ -6,27 +6,22 @@ export type Attachment = {
 	contentType: string;
 	size: number;
 	created_at: string;
-	/** Same-origin URL that streams the file (session cookie required). */
 	url: string;
 };
 
 export type Note = { id: number; content: string; created_at: string; attachments: Attachment[] };
 export type NotesPage = { data: Note[]; nextCursor: number | null };
 
-// Mirrors the API limits (notes-api/src/services/attachments.ts); the API re-checks everything.
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_FILES_PER_NOTE = 10;
 export const ACCEPT = "image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 const UPLOAD_CONCURRENCY = 3;
 const BASE = "/api/notes";
 
-// ---- transport ---------------------------------------------------------------
 
 let unauthorizedHandler = () => {};
-/** Called on any 401 (session expired/revoked). Registered by the auth module. */
 export const onUnauthorized = (fn: () => void) => void (unauthorizedHandler = fn);
 
-/** One place that turns a failed response into an Error (and reports 401s). */
 function toError(status: number, body: unknown): Error {
 	if (status === 401) unauthorizedHandler();
 	const message = (body as { error?: string } | null)?.error;
@@ -42,9 +37,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 	return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-// ---- notes -------------------------------------------------------------------
 
-/** Newest first. Pass the previous page's `nextCursor` to get the next page. */
 export const listNotes = (cursor?: number | null, limit = 20) => {
 	const params = new URLSearchParams({ limit: String(limit) });
 	if (cursor) params.set("cursor", String(cursor));
@@ -58,15 +51,10 @@ export const updateNote = (id: number, content: string) =>
 
 export const deleteNote = (id: number) => call<void>(`/${id}`, { method: "DELETE" });
 
-// ---- attachments -------------------------------------------------------------
 
 export const deleteAttachment = (noteId: number, id: string) =>
 	call<void>(`/${noteId}/attachments/${id}`, { method: "DELETE" });
 
-/**
- * Uploads one file (raw body, streamed to R2 by the API).
- * XHR instead of fetch so we can report upload progress (0..1).
- */
 export function uploadAttachment(noteId: number, file: File, onProgress?: (p: number) => void) {
 	return new Promise<Attachment>((resolve, reject) => {
 		const xhr = new XMLHttpRequest();
@@ -89,7 +77,6 @@ type UploadCallbacks = {
 	onError?: (key: string, error: unknown) => void;
 };
 
-/** Uploads several files a few at a time. Resolves with the ones that succeeded (partial success is normal). */
 export async function uploadAttachments(noteId: number, items: UploadItem[], cb: UploadCallbacks = {}) {
 	const queue = [...items];
 	const done: Attachment[] = [];
@@ -107,14 +94,12 @@ export async function uploadAttachments(noteId: number, items: UploadItem[], cb:
 	return done;
 }
 
-/** Client-side pre-check of one file; the API enforces the same limits. */
 export function checkFile(file: File): string | undefined {
 	if (file.size === 0) return `${file.name} is empty`;
 	if (file.size > MAX_FILE_BYTES) return `${file.name} is larger than ${fileSize(MAX_FILE_BYTES)}`;
 	if (/svg|html|javascript/.test(file.type)) return `${file.name}: file type not allowed`;
 }
 
-/** Splits picked files into acceptable ones (capped to the room left on the note) and problems. */
 export function partitionFiles(list: FileList | File[], existingCount: number) {
 	const problems: string[] = [];
 	const valid = Array.from(list).filter((f) => {
